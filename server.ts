@@ -13,7 +13,7 @@ async function startServer() {
   app.use(express.json());
 
   // API Route for contact form
-  app.post("/api/contact", (req, res) => {
+  app.post("/api/contact", async (req, res) => {
     const { name, email, message } = req.body;
     
     console.log("Contact Form Submission received:");
@@ -21,12 +21,29 @@ async function startServer() {
     console.log(`Email: ${email}`);
     console.log(`Message: ${message}`);
     
-    // In a real app, you would send an email here using a service like SendGrid, Mailgun, etc.
-    // For now, we simulate success.
+    // Optional: Forward to Google Sheets Webhook
+    const googleSheetUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL;
+    if (googleSheetUrl) {
+      try {
+        await fetch(googleSheetUrl, {
+          method: "POST",
+          body: JSON.stringify({
+            timestamp: new Date().toISOString(),
+            name,
+            email,
+            message
+          }),
+          headers: { "Content-Type": "application/json" }
+        });
+        console.log("Forwarded to Google Sheets successfully");
+      } catch (error) {
+        console.error("Error forwarding to Google Sheets:", error);
+      }
+    }
     
     res.status(200).json({ 
       success: true, 
-      message: "Your message has been sent successfully! (Simulated)" 
+      message: "Your message has been processed successfully!" 
     });
   });
 

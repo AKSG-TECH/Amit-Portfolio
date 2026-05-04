@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isEmailVerified() && request.auth.token.email == 'Amitkumarsahugupta@gmail.com';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    // Validation for ContactSubmission
+    function isValidContactSubmission(data) {
+      return data.keys().hasAll(['name', 'email', 'message', 'createdAt']) 
+        && data.keys().size() == 4
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.email is string && data.email.size() > 0 && data.email.size() <= 100
+        && data.message is string && data.message.size() > 0 && data.message.size() <= 1000
+        && data.createdAt == request.time;
+    }
+
+    // Contact submissions collection
+    match /contact_submissions/{submissionId} {
+      allow create: if isValidContactSubmission(incoming());
+      
+      // Only the admin (Amit) can read submissions
+      allow read: if isAdmin();
+      
+      // No one can update or delete submissions once created
+      allow update, delete: if false;
+    }
+  }
+}

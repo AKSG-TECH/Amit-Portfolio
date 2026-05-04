@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { db, OperationType, handleFirestoreError } from "./lib/firebase";
+import heroImage from "./hero.png";
 import { 
   Download, 
   Mail, 
@@ -163,18 +166,76 @@ export default function App() {
     email: "",
     message: ""
   });
+  const [formErrors, setFormErrors] = useState({
+    name: "",
+    email: "",
+    message: ""
+  });
+
+  const validateForm = () => {
+    const errors = { name: "", email: "", message: "" };
+    let isValid = true;
+
+    if (!formData.name.trim()) {
+      errors.name = "Full name is required";
+      isValid = false;
+    } else if (formData.name.trim().length < 2) {
+      errors.name = "Name must be at least 2 characters long";
+      isValid = false;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!formData.email.trim()) {
+      errors.email = "Email address is required";
+      isValid = false;
+    } else if (!emailRegex.test(formData.email)) {
+      errors.email = "Please enter a valid email address";
+      isValid = false;
+    }
+
+    if (!formData.message.trim()) {
+      errors.message = "Message cannot be empty";
+      isValid = false;
+    } else if (formData.message.trim().length < 10) {
+      errors.message = "Message must be at least 10 characters long";
+      isValid = false;
+    }
+
+    setFormErrors(errors);
+    return isValid;
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    // Clear error when user starts typing
+    if (formErrors[name as keyof typeof formErrors]) {
+      setFormErrors(prev => ({ ...prev, [name]: "" }));
+    }
   };
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!validateForm()) return;
+
     setIsSubmitting(true);
     setSubmitStatus("idle");
 
     try {
+      // 1. Save to Firestore
+      const path = 'contact_submissions';
+      try {
+        await addDoc(collection(db, path), {
+          ...formData,
+          createdAt: serverTimestamp()
+        });
+      } catch (error) {
+        // We log and handle firestore error but continue to API if needed
+        handleFirestoreError(error, OperationType.CREATE, path);
+      }
+
+      // 2. Send to API for potential Google Sheet integration
       const response = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -239,7 +300,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 font-sans selection:bg-blue-500/30 selection:text-blue-200">
+    <div className="min-h-screen bg-slate-950 font-sans selection:bg-blue-500/30 selection:text-blue-200 overflow-x-hidden">
       {/* Background Effect */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute top-0 -left-4 w-72 h-72 bg-blue-500 mix-blend-multiply filter blur-[128px] opacity-20 animate-blob"></div>
@@ -357,7 +418,7 @@ export default function App() {
         </AnimatePresence>
       </nav>
 
-      <main className="relative z-10 pt-24 md:pt-16">
+      <main className="relative z-10 pt-24">
         {/* Hero Section */}
         <section id="home" className="min-h-[calc(100vh-64px)] flex items-center px-4 sm:px-6 lg:px-8">
           <div className="max-w-7xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
@@ -386,14 +447,18 @@ export default function App() {
                 >
                   Contact Me
                 </motion.button>
-                <motion.button
+                <motion.a
+                  href="/Amit.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className="px-8 py-3 border border-white/20 hover:bg-white/5 text-white font-semibold rounded-full flex items-center gap-2"
+                  className="px-8 py-3 border border-white/20 hover:bg-white/5 text-white font-semibold rounded-full flex items-center gap-2 cursor-pointer"
                 >
                   <Download size={20} />
                   Download CV
-                </motion.button>
+                </motion.a>
               </div>
             </motion.div>
 
@@ -407,7 +472,7 @@ export default function App() {
                 <div className="absolute inset-0 bg-blue-500 blur-[100px] opacity-30"></div>
                 <div className="relative w-80 h-96 rounded-3xl glass overflow-hidden flex items-center justify-center border border-white/20 shadow-2xl">
                   <img 
-                    src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhLzUbPqfBg0RVdtMPvXv-6cM1jy18Z0f1eKL4_guc6ZraSmieK8-msiV3OrYZPPypvjCOsmsYXYRSkbRdMYFq7DazOt-hgkl4RSYYgkyP-4OkrxFEgwOzvOdvUk_rNtrVLtGkfhYfz6Qd7JsoxwT3F4FdD2E3jBX1dHn5PavHfi_WX4pVzLpX-_cHJFl1M/s1536/11256.png" 
+                    src={heroImage} 
                     alt="Amit Sahu" 
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"
@@ -433,7 +498,7 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-start">
               <motion.div
                 whileInView={{ opacity: 1, x: 0 }}
-                initial={{ opacity: 0, x: -50 }}
+                initial={{ opacity: 0, x: typeof window !== 'undefined' && window.innerWidth < 768 ? 0 : -50 }}
                 viewport={{ once: true }}
                 className="space-y-6"
               >
@@ -461,7 +526,7 @@ export default function App() {
 
               <motion.div
                 whileInView={{ opacity: 1, x: 0 }}
-                initial={{ opacity: 0, x: 50 }}
+                initial={{ opacity: 0, x: typeof window !== 'undefined' && window.innerWidth < 768 ? 0 : 50 }}
                 viewport={{ once: true }}
                 className="grid grid-cols-1 gap-6"
               >
@@ -581,10 +646,12 @@ export default function App() {
                         name="name"
                         value={formData.name}
                         onChange={handleInputChange}
-                        required
-                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all" 
+                        className={`w-full bg-white/5 border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.name ? "border-red-500/50 focus:ring-red-500/50" : "border-white/10 focus:ring-blue-500/50"
+                        }`} 
                         placeholder="Enter your full name" 
                       />
+                      {formErrors.name && <p className="text-red-400 text-xs mt-1 px-1">{formErrors.name}</p>}
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-slate-400 px-1">Email</label>
@@ -593,10 +660,12 @@ export default function App() {
                         name="email"
                         value={formData.email}
                         onChange={handleInputChange}
-                        required
-                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all" 
+                        className={`w-full bg-white/5 border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all ${
+                          formErrors.email ? "border-red-500/50 focus:ring-red-500/50" : "border-white/10 focus:ring-blue-500/50"
+                        }`} 
                         placeholder="email@example.com" 
                       />
+                      {formErrors.email && <p className="text-red-400 text-xs mt-1 px-1">{formErrors.email}</p>}
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -606,10 +675,12 @@ export default function App() {
                       rows={4} 
                       value={formData.message}
                       onChange={handleInputChange}
-                      required
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all" 
+                      className={`w-full bg-white/5 border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all ${
+                        formErrors.message ? "border-red-500/50 focus:ring-red-500/50" : "border-white/10 focus:ring-blue-500/50"
+                      }`} 
                       placeholder="Your message here..."
                     ></textarea>
+                    {formErrors.message && <p className="text-red-400 text-xs mt-1 px-1">{formErrors.message}</p>}
                   </div>
                   <button 
                     type="submit"
@@ -797,7 +868,7 @@ const ExperienceItem: React.FC<{ exp: Experience; index: number }> = ({ exp, ind
       <div className="flex-1 w-full">
         <motion.div
           whileInView={{ opacity: 1, x: 0 }}
-          initial={{ opacity: 0, x: isLeft ? 50 : -50 }}
+          initial={{ opacity: 0, x: typeof window !== 'undefined' && window.innerWidth < 768 ? 0 : (isLeft ? 50 : -50) }}
           viewport={{ once: true }}
           className={`glass p-8 rounded-3xl relative ${isLeft ? 'md:text-right' : ''}`}
         >
